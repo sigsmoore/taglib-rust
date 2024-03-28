@@ -21,12 +21,19 @@
 #![crate_name = "taglib"]
 #![crate_type = "lib"]
 
+extern crate lazy_static;
 extern crate libc;
 extern crate taglib_sys as sys;
 
-use libc::c_char;
+use std::cmp::max;
+use libc::{c_char, c_uint};
+use std::collections::HashSet;
 use std::ffi::{CString, CStr};
 use std::path::Path;
+use std::ptr;
+use std::slice::from_raw_parts;
+use std::str::Utf8Error;
+use lazy_static::lazy_static;
 
 use sys as ll;
 
@@ -168,6 +175,34 @@ impl<'a> Tag<'a> {
             ll::taglib_tag_set_track(self.raw, track);
         }
     }
+
+    pub fn album_artist(&self) -> Option<String> {
+        self.file.album_artist()
+    }
+
+    pub fn composer(&self) -> Option<String> {
+        self.file.composer()
+    }
+
+    pub fn copyright(&self) -> Option<String> {
+        self.file.copyright()
+    }
+
+    pub fn track_total(&self) -> Option<u32> {
+        self.file.track_total()
+    }
+
+    pub fn disc_number(&self) -> Option<u32> {
+        self.file.disc_number()
+    }
+
+    pub fn disc_total(&self) -> Option<u32> {
+        self.file.disc_total()
+    }
+
+    pub fn date(&self) -> Option<String> {
+        self.file.date()
+    }
 }
 
 impl<'a> AudioProperties<'a> {
@@ -198,25 +233,200 @@ impl<'a> AudioProperties<'a> {
 #[derive(Copy, Clone, PartialEq)]
 pub enum FileType {
     /// MPEG file
-    MPEG = ll::TAGLIB_FILE_MPEG as isize,
+    MPEG = ll::TagLib_File_Type_TagLib_File_MPEG as isize,
     /// Ogg/Vorbis file
-    OggVorbis = ll::TAGLIB_FILE_OGG_VORBIS as isize,
+    OggVorbis = ll::TagLib_File_Type_TagLib_File_OggVorbis as isize,
     /// FLAC file
-    FLAC = ll::TAGLIB_FILE_FLAC as isize,
+    FLAC = ll::TagLib_File_Type_TagLib_File_FLAC as isize,
     /// MPC file
-    MPC = ll::TAGLIB_FILE_MPC as isize,
+    MPC = ll::TagLib_File_Type_TagLib_File_MPC as isize,
     /// Ogg/FLAC file
-    OggFlac = ll::TAGLIB_FILE_OGG_FLAC as isize,
+    OggFlac = ll::TagLib_File_Type_TagLib_File_OggFlac as isize,
     /// WavPack file
-    WavPack = ll::TAGLIB_FILE_WAV_PACK as isize,
+    WavPack = ll::TagLib_File_Type_TagLib_File_WavPack as isize,
     /// Ogg/Speex file
-    Speex = ll::TAGLIB_FILE_SPEEX as isize,
+    Speex = ll::TagLib_File_Type_TagLib_File_Speex as isize,
     /// TrueAudio file
-    TrueAudio = ll::TAGLIB_FILE_TRUE_AUDIO as isize,
+    TrueAudio = ll::TagLib_File_Type_TagLib_File_TrueAudio as isize,
     /// MP4 file
-    MP4 = ll::TAGLIB_FILE_MP4 as isize,
+    MP4 = ll::TagLib_File_Type_TagLib_File_MP4 as isize,
     /// ASF file
-    ASF = ll::TAGLIB_FILE_ASF as isize,
+    ASF = ll::TagLib_File_Type_TagLib_File_ASF as isize,
+    /// AIFF file
+    AIFF = ll::TagLib_File_Type_TagLib_File_AIFF as isize,
+    /// WAV file
+    WAV = ll::TagLib_File_Type_TagLib_File_WAV as isize,
+    /// APE file
+    APE = ll::TagLib_File_Type_TagLib_File_APE as isize,
+    /// IT file
+    IT = ll::TagLib_File_Type_TagLib_File_IT as isize,
+    /// MOD file
+    MOD = ll::TagLib_File_Type_TagLib_File_Mod as isize,
+    /// S3M file
+    S3M = ll::TagLib_File_Type_TagLib_File_S3M as isize,
+    /// XM file
+    XM = ll::TagLib_File_Type_TagLib_File_XM as isize,
+    /// OPUS file
+    OPUS = ll::TagLib_File_Type_TagLib_File_Opus as isize,
+    /// DSF file
+    DSF = ll::TagLib_File_Type_TagLib_File_DSF as isize,
+    /// DSDIFF file
+    DFF = ll::TagLib_File_Type_TagLib_File_DSDIFF as isize,
+}
+
+lazy_static! {
+    static ref MPEG_SUFFIX: Vec<&'static str> = vec![".mp3", ".aac"];
+    static ref OGG_VORBIS_SUFFIX: Vec<&'static str> = vec![".ogg"];
+    static ref FLAC_SUFFIX: Vec<&'static str> = vec![".flac"];
+    static ref MPC_SUFFIX: Vec<&'static str> = vec![".mpc"];
+    static ref OGG_FLAC_SUFFIX: Vec<&'static str> = vec![".flac"];
+
+    static ref WAV_PACK_SUFFIX: Vec<&'static str> = vec![".wv"];
+    static ref SPEEX_SUFFIX: Vec<&'static str> = vec![".spx"];
+    static ref TRUE_AUDIO_SUFFIX: Vec<&'static str> = vec![".tta"];
+    static ref MP4_SUFFIX: Vec<&'static str> = vec![".mp4", ".m4a", "m4b", "m4p", "m4v", "isom"];
+    static ref ASF_SUFFIX: Vec<&'static str> = vec![".asf"];
+
+    static ref AIFF_SUFFIX: Vec<&'static str> = vec![".aif", ".aiff", ".aifc"];
+    static ref WAV_SUFFIX: Vec<&'static str> = vec![".wav"];
+    static ref APE_SUFFIX: Vec<&'static str> = vec![".ape"];
+    static ref IT_SUFFIX: Vec<&'static str> = vec![".it"];
+    static ref MOD_SUFFIX: Vec<&'static str> = vec![".mod"];
+
+    static ref S3M_SUFFIX: Vec<&'static str> = vec![".s3m"];
+    static ref XM_SUFFIX: Vec<&'static str> = vec![".xm"];
+    static ref OPUS_SUFFIX: Vec<&'static str> = vec![".opus"];
+    static ref DSF_SUFFIX: Vec<&'static str> = vec![".dsf"];
+    static ref DFF_SUFFIX: Vec<&'static str> = vec![".dff"];
+
+    static ref EMPTY_SUFFIX: Vec<&'static str> = vec![];
+
+    static ref ALL_SUFFIX: HashSet<&'static str> = {
+        let mut m = HashSet::new();
+        m.extend(MPEG_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+        m.extend(OGG_VORBIS_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+        m.extend(FLAC_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+        m.extend(MPC_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+        m.extend(OGG_FLAC_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+
+        m.extend(WAV_PACK_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+        m.extend(SPEEX_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+        m.extend(TRUE_AUDIO_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+        m.extend(MP4_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+        m.extend(ASF_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+
+        m.extend(AIFF_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+        m.extend(WAV_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+        m.extend(APE_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+        m.extend(IT_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+        m.extend(MOD_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+
+        m.extend(S3M_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+        m.extend(XM_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+        m.extend(OPUS_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+        m.extend(DSF_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+        m.extend(DFF_SUFFIX.iter().cloned().collect::<HashSet<&str>>());
+
+        m
+    };
+}
+
+impl FileType {
+    pub fn name(&self) -> &'static str {
+        if self == &FileType::MPEG {
+            "MPEG"
+        } else if self == &FileType::OggVorbis {
+            "OggVorbis"
+        } else if self == &FileType::FLAC {
+            "FLAC"
+        } else if self == &FileType::MPC {
+            "MPC"
+        } else if self == &FileType::OggFlac {
+            "OggFlac"
+        } else if self == &FileType::WavPack {
+            "WavPack"
+        } else if self == &FileType::Speex {
+            "Speex"
+        } else if self == &FileType::TrueAudio {
+            "TrueAudio"
+        } else if self == &FileType::MP4 {
+            "MP4"
+        } else if self == &FileType::ASF {
+            "ASF"
+        } else if self == &FileType::AIFF {
+            "AIFF"
+        } else if self == &FileType::WAV {
+            "WAV"
+        } else if self == &FileType::APE {
+            "APE"
+        } else if self == &FileType::IT {
+            "IT"
+        } else if self == &FileType::MOD {
+            "MOD"
+        } else if self == &FileType::S3M {
+            "S3M"
+        } else if self == &FileType::XM {
+            "XM"
+        } else if self == &FileType::OPUS {
+            "OPUS"
+        } else if self == &FileType::DSF {
+            "DSF"
+        } else if self == &FileType::DFF {
+            "DFF"
+        } else {
+            ""
+        }
+    }
+
+    pub fn suffix(&self) -> &'static Vec<&str> {
+        if self == &FileType::MPEG {
+            &MPEG_SUFFIX
+        } else if self == &FileType::OggVorbis {
+            &OGG_VORBIS_SUFFIX
+        } else if self == &FileType::FLAC {
+            &FLAC_SUFFIX
+        } else if self == &FileType::MPC {
+            &MPC_SUFFIX
+        } else if self == &FileType::OggFlac {
+            &OGG_FLAC_SUFFIX
+        } else if self == &FileType::WavPack {
+            &WAV_PACK_SUFFIX
+        } else if self == &FileType::Speex {
+            &SPEEX_SUFFIX
+        } else if self == &FileType::TrueAudio {
+            &TRUE_AUDIO_SUFFIX
+        } else if self == &FileType::MP4 {
+            &MP4_SUFFIX
+        } else if self == &FileType::ASF {
+            &ASF_SUFFIX
+        } else if self == &FileType::AIFF {
+            &AIFF_SUFFIX
+        } else if self == &FileType::WAV {
+            &WAV_SUFFIX
+        } else if self == &FileType::APE {
+            &APE_SUFFIX
+        } else if self == &FileType::IT {
+            &IT_SUFFIX
+        } else if self == &FileType::MOD {
+            &MOD_SUFFIX
+        } else if self == &FileType::S3M {
+            &S3M_SUFFIX
+        } else if self == &FileType::XM {
+            &XM_SUFFIX
+        } else if self == &FileType::OPUS {
+            &OPUS_SUFFIX
+        } else if self == &FileType::DSF {
+            &DSF_SUFFIX
+        } else if self == &FileType::DFF {
+            &DSF_SUFFIX
+        } else {
+            &EMPTY_SUFFIX
+        }
+    }
+
+    pub fn all_suffix() -> &'static HashSet<&'static str> {
+        &*ALL_SUFFIX
+    }
 }
 
 #[derive(Debug)]
@@ -238,6 +448,19 @@ impl Drop for File {
         }
     }
 }
+
+// Define keys for get / set properties
+const KEY_ALBUM_ARTIST: &'static str = "ALBUMARTIST";
+const KEY_COMPOSER: &'static str = "COMPOSER";
+const KEY_COPYRIGHT: &'static str = "COPYRIGHT";
+const KEY_DATE: &'static str = "DATE";
+
+// key for property, value like 01/02, first is disc_number, last is disc_total
+const KEY_DISC_NUMBER: &'static str = "DISCNUMBER";
+// key for property, value like 01/10, first is track_number, last is track_total
+const KEY_TRACK_NUMBER: &'static str = "TRACKNUMBER";
+// key for property, value like 10, only contains track_total
+const KEY_TRACK_TOTAL: &'static str = "TRACKTOTAL";
 
 impl File {
     /// Creates a new `taglib::File` for the given `filename`.
@@ -303,12 +526,291 @@ impl File {
         }
     }
 
+    pub fn album_artist(&self) -> Option<String> {
+        self.get_first_property(KEY_ALBUM_ARTIST)
+    }
+
+    pub fn set_album_artist(&mut self, value: &str) {
+        self.set_property(KEY_ALBUM_ARTIST, value);
+    }
+
+    pub fn remove_album_artist(&mut self) {
+        self.remove_property(KEY_ALBUM_ARTIST);
+    }
+
+    pub fn composer(&self) -> Option<String> {
+        self.get_first_property(KEY_COMPOSER)
+    }
+
+    pub fn set_composer(&mut self, value: &str) {
+        self.set_property(KEY_COMPOSER, value);
+    }
+
+    pub fn remove_composer(&mut self) {
+        self.remove_property(KEY_COMPOSER);
+    }
+
+    pub fn copyright(&self) -> Option<String> {
+        self.get_first_property(KEY_COPYRIGHT)
+    }
+
+    pub fn set_copyright(&mut self, value: &str) {
+        self.set_property(KEY_COPYRIGHT, value);
+    }
+
+    pub fn remove_copyright(&mut self) {
+        self.remove_property(KEY_COPYRIGHT);
+    }
+
+    pub fn date(&self) -> Option<String> {
+        self.get_first_property(KEY_DATE)
+    }
+
+    pub fn set_date(&mut self, value: &str) {
+        self.set_property(KEY_DATE, value);
+    }
+
+    pub fn remove_date(&mut self) {
+        self.remove_property(KEY_DATE);
+    }
+
+    pub fn track_number(&self) -> Option<u32> {
+        self.tag().unwrap().track()
+            .or_else(|| match self.text_pair_by_id(KEY_TRACK_NUMBER) {
+                None => None,
+                Some((a, _, _)) => Some(a),
+            })
+    }
+
+    pub fn set_track_number(&mut self, value: u32, padding: usize) {
+        let t = self.tag().unwrap();
+        unsafe {
+            ll::taglib_tag_set_track(t.raw, value);
+        }
+        let (_, y, _) = self.option_u32_pair_by_id(KEY_TRACK_NUMBER);
+        self.set_property_split_by_slash(KEY_TRACK_NUMBER, Some(value), y, padding);
+    }
+
+    pub fn remove_track_number(&mut self) {
+        let t = self.tag().unwrap();
+        unsafe {
+            ll::taglib_tag_set_track(t.raw, 0);
+        }
+        let (x, y, len) = self.option_u32_pair_by_id(KEY_TRACK_NUMBER);
+        if x.is_some() {
+            self.set_property_split_by_slash(KEY_TRACK_NUMBER, None, y, len);
+        }
+    }
+
+    pub fn track_total(&self) -> Option<u32> {
+        self.get_first_property(KEY_TRACK_TOTAL)
+            .map(|e| e.parse::<u32>().ok().unwrap())
+            .or_else(|| match self.text_pair_by_id(KEY_TRACK_NUMBER) {
+                None => None,
+                Some((_, None, _)) => None,
+                Some((_, Some(b), _)) => Some(b),
+            })
+    }
+
+    pub fn set_track_total(&mut self, value: u32, padding: usize) {
+        self.set_property(KEY_TRACK_TOTAL, &decimal_to_padding_string(value, padding));
+
+        let (x, _, _) = self.option_u32_pair_by_id(KEY_TRACK_NUMBER);
+        self.set_property_split_by_slash(KEY_TRACK_NUMBER, x, Some(value), padding);
+    }
+
+    pub fn remove_track_total(&mut self) {
+        if self.get_first_property(KEY_TRACK_TOTAL).is_some() {
+            self.remove_property(KEY_TRACK_TOTAL);
+        }
+
+        let (x, y, len) = self.option_u32_pair_by_id(KEY_TRACK_NUMBER);
+        if y.is_some() {
+            self.set_property_split_by_slash(KEY_TRACK_NUMBER, x, None, len);
+        }
+    }
+
+    pub fn disc_number(&self) -> Option<u32> {
+        match self.text_pair_by_id(KEY_DISC_NUMBER) {
+            None => None,
+            Some((a, _, _)) => Some(a),
+        }
+    }
+
+    pub fn set_disc_number(&mut self, value: u32, padding: usize) {
+        let (_, y, _) = self.option_u32_pair_by_id(KEY_DISC_NUMBER);
+        self.set_property_split_by_slash(KEY_DISC_NUMBER, Some(value), y, padding);
+    }
+
+    pub fn remove_disc_number(&mut self) {
+        let (x, y, len) = self.option_u32_pair_by_id(KEY_DISC_NUMBER);
+        if x.is_some() {
+            self.set_property_split_by_slash(KEY_DISC_NUMBER, None, y, len);
+        }
+    }
+
+    pub fn disc_total(&self) -> Option<u32> {
+        match self.text_pair_by_id(KEY_DISC_NUMBER) {
+            None => None,
+            Some((_, None, _)) => None,
+            Some((_, Some(b), _)) => Some(b),
+        }
+    }
+
+    pub fn set_disc_total(&mut self, total_disc: u32, padding: usize) {
+        let (x, _, _) = self.option_u32_pair_by_id(KEY_DISC_NUMBER);
+        self.set_property_split_by_slash(KEY_DISC_NUMBER, x, Some(total_disc), padding);
+    }
+
+    pub fn remove_disc_total(&mut self) {
+        let (x, y, len) = self.option_u32_pair_by_id(KEY_DISC_NUMBER);
+        if y.is_some() {
+            self.set_property_split_by_slash(KEY_DISC_NUMBER, x, None, len);
+        }
+    }
+
+    fn set_property_split_by_slash(&mut self,
+                                   key: &str,
+                                   first: Option<u32>,
+                                   last: Option<u32>,
+                                   padding: usize) {
+        let new_value = Self::pair_to_string(first, last, padding);
+        match new_value {
+            None => self.remove_property(key),
+            Some(ref x) => self.set_property(key, &x),
+        }
+    }
+
+    fn pair_to_string(first: Option<u32>, last: Option<u32>, padding: usize) -> Option<String> {
+        match (first, last) {
+            (None, None) => None,
+            (None, Some(y)) => Some("/".to_owned() + &decimal_to_padding_string(y, padding)),
+            (Some(x), None) => Some(decimal_to_padding_string(x, padding)),
+            (Some(x), Some(y)) => {
+                Some(decimal_to_padding_string(x, padding) + "/"
+                    + &decimal_to_padding_string(y, padding))
+            }
+        }
+    }
+
+    fn text_pair_by_id(&self, id: &str) -> Option<(u32, Option<u32>, usize)> {
+        match self.get_first_property(id) {
+            None => None,
+            Some(ref text) => {
+                self.text_pair(text)
+            }
+        }
+    }
+
+    fn text_pair(&self, text: &str) -> Option<(u32, Option<u32>, usize)> {
+        let mut split = text.split('/');
+        let a_str = split.next()?;
+        let a_len = a_str.len();
+        let a = a_str.parse().ok()?;
+        let mut b_len = 0usize;
+        let b = split.next()
+            .and_then(|s| {
+                b_len = s.len();
+                s.parse().ok()
+            });
+        Some((a, b, max(a_len, b_len)))
+    }
+
+    fn option_u32_pair_by_id(&mut self, key: &str) -> (Option<u32>, Option<u32>, usize) {
+        let (x, y, len) = match self.text_pair_by_id(key) {
+            None => (None, None, 0),
+            Some((a, None, len)) => (Some(a), None, len),
+            Some((a, Some(b), len)) => (Some(a), Some(b), len),
+        };
+        (x, y, len)
+    }
+
+    pub fn get_first_property(&self, key: &str) -> Option<String> {
+        let vec = self.get_property(key).ok()?;
+        if !vec.is_empty() {
+            Some(vec.first().unwrap().clone())
+        } else {
+            None
+        }
+    }
+
+    pub fn get_property(&self, key: &str) -> Result<Vec<String>, Utf8Error> {
+        let cs = CString::new(key).unwrap();
+        let s = cs.as_ptr();
+        let call_res = unsafe {
+            ll::taglib_property_get_strings(self.raw, s)
+        };
+        c_char_to_vec_string_free(call_res.value, call_res.len)
+    }
+
+    pub fn keys(&self) -> Result<Vec<String>, Utf8Error> {
+        let call_res = unsafe {
+            ll::taglib_property_keys_strings(self.raw)
+        };
+        c_char_to_vec_string_free(call_res.value, call_res.len)
+    }
+
+    pub fn set_property(&mut self, key: &str, value: &str) {
+        let cs = CString::new(key).unwrap();
+        let s = cs.as_ptr();
+
+        let vs = CString::new(value).unwrap();
+        let v = vs.as_ptr();
+        unsafe {
+            ll::taglib_property_set(self.raw, s, v);
+        }
+    }
+
+    pub fn set_append_property(&mut self, key: &str, value: &str) {
+        let cs = CString::new(key).unwrap();
+        let s = cs.as_ptr();
+
+        let vs = CString::new(value).unwrap();
+        let v = vs.as_ptr();
+        unsafe {
+            ll::taglib_property_set_append(self.raw, s, v);
+        }
+    }
+
+    pub fn remove_property(&mut self, key: &str) {
+        let cs = CString::new(key).unwrap();
+        let s = cs.as_ptr();
+        unsafe {
+            ll::taglib_property_set(self.raw, s, ptr::null());
+        }
+    }
+
     /// Updates the meta-data of the file.
     pub fn save(&self) -> bool {
         unsafe { ll::taglib_file_save(self.raw) != 0 }
     }
 }
 
+fn c_char_to_vec_string_free(ptr: *mut *mut c_char,
+                             len: c_uint) -> Result<Vec<String>, Utf8Error> {
+    if ptr.is_null() {
+        Ok(Vec::new())
+    } else {
+        unsafe {
+            let res = convert_double_pointer_to_vec(ptr, len);
+            ll::taglib_property_free(ptr);
+            res
+        }
+    }
+}
+
+unsafe fn convert_double_pointer_to_vec(data: *mut *mut c_char,
+                                        len: c_uint) -> Result<Vec<String>, Utf8Error> {
+    from_raw_parts(data, len as usize).iter()
+        .map(|arg| {
+            CStr::from_ptr(*arg).to_str().map(ToString::to_string)
+        })
+        .collect()
+}
+
+fn decimal_to_padding_string(decimal: u32, padding: usize) -> String {
+    format!("{:0width$}", decimal, width = padding)
+}
 
 /// Fixture creation:
 /// ffmpeg -t 0.01 -f s16le -i /dev/zero test.mp3
