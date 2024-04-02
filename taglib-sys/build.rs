@@ -1,5 +1,6 @@
 #[cfg(feature = "pkg-config")]
 extern crate pkg_config;
+extern crate core;
 
 use std::collections::HashSet;
 use std::env;
@@ -7,9 +8,9 @@ use std::path::PathBuf;
 
 //是否静态编译，默认否
 // TAGLIB_STATIC=1
-// 多个用半角冒号分隔，示例
+// 多个用半角冒号`:`分隔，Windows下用半角分号`;`分隔，示例
 // TAGLIB_LIB_DIRS=/others/lib:/opt/usr/local/lib
-// 多个用半角冒号分隔，标准的`tag_c`和`tag`无需指定，示例
+// 多个用半角冒号`:`分隔，标准的`tag_c`和`tag`无需指定，示例
 // TAGLIB_EXTRA_LIBS=zlib
 fn main() {
     if !build_pkgconfig() {
@@ -18,7 +19,9 @@ fn main() {
 }
 
 fn build_env() {
-    let lib_dirs = get_lib_dirs();
+    let sep = get_sep();
+
+    let lib_dirs = get_lib_dirs(sep);
     for dir in &lib_dirs {
         if !dir.exists() {
             panic!("library directory does not exist: {}", dir.to_string_lossy());
@@ -37,19 +40,32 @@ fn build_env() {
 }
 
 fn get_extra_libs() -> HashSet<String> {
-    get_env_hashset_string("TAGLIB_EXTRA_LIBS")
+    get_env_hashset_string("TAGLIB_EXTRA_LIBS", ':')
 }
 
-fn get_lib_dirs() -> Vec<PathBuf> {
-    get_env_hashset_string("TAGLIB_LIB_DIRS").into_iter()
+fn get_sep() -> char {
+    match env::var("TARGET") {
+        Ok(ref t) => {
+            if t.to_lowercase().contains("windows") {
+                ';'
+            } else {
+                ':'
+            }
+        }
+        _ => ':'
+    }
+}
+
+fn get_lib_dirs(sep: char) -> Vec<PathBuf> {
+    get_env_hashset_string("TAGLIB_LIB_DIRS", sep).into_iter()
         .map(PathBuf::from).collect::<Vec<PathBuf>>()
 }
 
-fn get_env_hashset_string(env_key: &str) -> HashSet<String> {
+fn get_env_hashset_string(env_key: &str, sep: char) -> HashSet<String> {
     println!("cargo:rerun-if-env-changed={}", env_key);
     env::var(env_key)
         .map_or_else(|_| HashSet::new(),
-                     |v| v.split(':')
+                     |v| v.split(sep)
                          .map(|e| e.trim().to_owned()).collect::<HashSet<String>>())
 }
 
