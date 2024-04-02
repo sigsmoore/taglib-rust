@@ -28,6 +28,7 @@ extern crate taglib_sys as sys;
 use std::cmp::max;
 use libc::{c_char, c_uint};
 use std::collections::HashSet;
+use std::convert::TryInto;
 use std::ffi::{CString, CStr};
 use std::path::Path;
 use std::ptr;
@@ -494,7 +495,9 @@ impl File {
         };
 
         let filename_c_ptr = filename_c.as_ptr();
-        let f = unsafe { ll::taglib_file_new_type(filename_c_ptr, filetype as u32) };
+        let f = unsafe {
+            ll::taglib_file_new_type(filename_c_ptr, (filetype as u32).try_into().unwrap())
+        };
         if f.is_null() {
             return Err(FileError::InvalidFile);
         }
