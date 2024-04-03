@@ -21,6 +21,10 @@ libc = "0.2"
 path = "taglib-sys"
 version = "2.0.0"
 
+[target.'cfg(target_os = "windows")'.dependencies]
+codepage = "0.1.1"
+windows-sys = { vesrsion = "0.52", features = ["Win32_Globalization"] }
+
 [features]
 default = []
 use-pkgconfig = ["taglib-sys/use-pkgconfig"]

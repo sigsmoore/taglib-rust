@@ -25,6 +25,10 @@ extern crate lazy_static;
 extern crate libc;
 extern crate taglib_sys as sys;
 
+#[cfg(target_os = "windows")]
+extern crate windows_sys as windows;
+extern crate codepage;
+
 use std::cmp::max;
 use libc::{c_char, c_uint};
 use std::collections::HashSet;
@@ -472,11 +476,36 @@ const KEY_TRACK_NUMBER: &'static str = "TRACKNUMBER";
 // key for property, value like 10, only contains track_total
 const KEY_TRACK_TOTAL: &'static str = "TRACKTOTAL";
 
+#[cfg(target_os = "windows")]
+fn acp_encode(s: &str) -> Option<Vec<u8>> {
+    let acp = unsafe { windows::Win32::Globalization::GetACP() };
+    let e = codepage::to_encoding(acp as u16)?;
+
+    let (res, _e, has_error) = e.encode(s);
+    if !has_error {
+        let vec = res.iter().cloned().collect();
+        Some(vec)
+    } else {
+        None
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn a(s: &str) -> Option<Vec<u8>> {
+    None
+}
+
 impl File {
     /// Creates a new `taglib::File` for the given `filename`.
     pub fn new<P: AsRef<Path>>(path: P) -> Result<File, FileError> {
         let filename = path.as_ref().to_str().ok_or(FileError::InvalidFileName)?;
-        let filename_c = CString::new(filename).ok().ok_or(FileError::InvalidFileName)?;
+        let filename_c = acp_encode(filename)
+            .map_or_else(|| CString::new(filename),
+                         |v| {
+                             let from_vec = unsafe { CString::from_vec_unchecked(v) };
+                             Ok(from_vec)
+                         })
+            .map_err(|_| FileError::InvalidFileName)?;
         let filename_c_ptr = filename_c.as_ptr();
 
         let f = unsafe { ll::taglib_file_new(filename_c_ptr) };
