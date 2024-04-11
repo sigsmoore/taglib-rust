@@ -295,13 +295,13 @@ lazy_static! {
     static ref OGG_VORBIS_SUFFIX: Vec<&'static str> = vec![".ogg"];
     static ref FLAC_SUFFIX: Vec<&'static str> = vec![".flac"];
     static ref MPC_SUFFIX: Vec<&'static str> = vec![".mpc"];
-    static ref OGG_FLAC_SUFFIX: Vec<&'static str> = vec![".flac"];
+    static ref OGG_FLAC_SUFFIX: Vec<&'static str> = vec![".flac", ".oga"];
 
     static ref WAV_PACK_SUFFIX: Vec<&'static str> = vec![".wv"];
     static ref SPEEX_SUFFIX: Vec<&'static str> = vec![".spx"];
     static ref TRUE_AUDIO_SUFFIX: Vec<&'static str> = vec![".tta"];
-    static ref MP4_SUFFIX: Vec<&'static str> = vec![".mp4", ".m4a", "m4b", "m4p", "m4v", "isom"];
-    static ref ASF_SUFFIX: Vec<&'static str> = vec![".asf"];
+    static ref MP4_SUFFIX: Vec<&'static str> = vec![".mp4", ".m4a", "m4b", "m4p", "m4v", "isom", "3g2"];
+    static ref ASF_SUFFIX: Vec<&'static str> = vec![".asf", ".wma"];
 
     static ref AIFF_SUFFIX: Vec<&'static str> = vec![".aif", ".aiff", ".aifc"];
     static ref WAV_SUFFIX: Vec<&'static str> = vec![".wav"];
