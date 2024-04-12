@@ -202,16 +202,36 @@ impl<'a> Tag<'a> {
         self.file.copyright()
     }
 
+    pub fn track_number(&self) -> Option<u32> {
+        self.file.track_number()
+    }
+
+    pub fn track_number_string(&self) -> Option<String> {
+        self.file.track_number_string()
+    }
+
     pub fn track_total(&self) -> Option<u32> {
         self.file.track_total()
+    }
+
+    pub fn track_total_string(&self) -> Option<String> {
+        self.file.track_total_string()
     }
 
     pub fn disc_number(&self) -> Option<u32> {
         self.file.disc_number()
     }
 
+    pub fn disc_number_string(&self) -> Option<String> {
+        self.file.disc_number_string()
+    }
+
     pub fn disc_total(&self) -> Option<u32> {
         self.file.disc_total()
+    }
+
+    pub fn disc_total_string(&self) -> Option<String> {
+        self.file.disc_total_string()
     }
 
     pub fn date(&self) -> Option<String> {
@@ -622,10 +642,26 @@ impl File {
 
     pub fn track_number(&self) -> Option<u32> {
         self.tag().unwrap().track()
-            .or_else(|| match self.text_pair_by_id(KEY_TRACK_NUMBER) {
-                None => None,
-                Some((a, _, _)) => Some(a),
-            })
+    }
+
+    pub fn track_number_string(&self) -> Option<String> {
+        if let Some(track) = self.tag().unwrap().track() {
+            if let Some((track_string, _, _)) = self.text_pair_by_id(KEY_TRACK_NUMBER) {
+                if let Some(track_in_prop) = track_string.parse::<u32>().ok() {
+                    if track_in_prop == track {
+                        Some(track_string)
+                    } else {
+                        Some(track.to_string())
+                    }
+                } else {
+                    Some(track.to_string())
+                }
+            } else {
+                Some(track.to_string())
+            }
+        } else {
+            None
+        }
     }
 
     pub fn set_track_number(&mut self, value: u32, padding: usize) {
@@ -649,13 +685,19 @@ impl File {
     }
 
     pub fn track_total(&self) -> Option<u32> {
-        self.get_first_property(KEY_TRACK_TOTAL)
-            .map(|e| e.parse::<u32>().ok().unwrap())
-            .or_else(|| match self.text_pair_by_id(KEY_TRACK_NUMBER) {
-                None => None,
-                Some((_, None, _)) => None,
-                Some((_, Some(b), _)) => Some(b),
-            })
+        match self.number_pair_by_id(KEY_TRACK_NUMBER) {
+            None => None,
+            Some((_, None, _)) => None,
+            Some((_, Some(b), _)) => Some(b),
+        }
+    }
+
+    pub fn track_total_string(&self) -> Option<String> {
+        match self.text_pair_by_id(KEY_TRACK_NUMBER) {
+            None => None,
+            Some((_, None, _)) => None,
+            Some((_, Some(b), _)) => Some(b),
+        }
     }
 
     pub fn set_track_total(&mut self, value: u32, padding: usize) {
@@ -677,6 +719,13 @@ impl File {
     }
 
     pub fn disc_number(&self) -> Option<u32> {
+        match self.number_pair_by_id(KEY_DISC_NUMBER) {
+            None => None,
+            Some((a, _, _)) => Some(a),
+        }
+    }
+
+    pub fn disc_number_string(&self) -> Option<String> {
         match self.text_pair_by_id(KEY_DISC_NUMBER) {
             None => None,
             Some((a, _, _)) => Some(a),
@@ -696,6 +745,14 @@ impl File {
     }
 
     pub fn disc_total(&self) -> Option<u32> {
+        match self.number_pair_by_id(KEY_DISC_NUMBER) {
+            None => None,
+            Some((_, None, _)) => None,
+            Some((_, Some(b), _)) => Some(b),
+        }
+    }
+
+    pub fn disc_total_string(&self) -> Option<String> {
         match self.text_pair_by_id(KEY_DISC_NUMBER) {
             None => None,
             Some((_, None, _)) => None,
@@ -739,7 +796,31 @@ impl File {
         }
     }
 
-    fn text_pair_by_id(&self, id: &str) -> Option<(u32, Option<u32>, usize)> {
+    fn number_pair_by_id(&self, id: &str) -> Option<(u32, Option<u32>, usize)> {
+        match self.get_first_property(id) {
+            None => None,
+            Some(ref text) => {
+                self.number_pair(text)
+            }
+        }
+    }
+
+    fn number_pair(&self, text: &str) -> Option<(u32, Option<u32>, usize)> {
+        let mut split = text.split('/');
+        let a_str = split.next()?.trim();
+        let a_len = a_str.len();
+        let a = a_str.parse().ok()?;
+        let mut b_len = 0usize;
+        let b = split.next()
+            .and_then(|s| {
+                let s = s.trim();
+                b_len = s.len();
+                s.parse().ok()
+            });
+        Some((a, b, max(a_len, b_len)))
+    }
+
+    fn text_pair_by_id(&self, id: &str) -> Option<(String, Option<String>, usize)> {
         match self.get_first_property(id) {
             None => None,
             Some(ref text) => {
@@ -748,22 +829,23 @@ impl File {
         }
     }
 
-    fn text_pair(&self, text: &str) -> Option<(u32, Option<u32>, usize)> {
+    fn text_pair(&self, text: &str) -> Option<(String, Option<String>, usize)> {
         let mut split = text.split('/');
-        let a_str = split.next()?;
+        let a_str = split.next()?.trim();
         let a_len = a_str.len();
-        let a = a_str.parse().ok()?;
+        let a = a_str.to_owned();
         let mut b_len = 0usize;
         let b = split.next()
             .and_then(|s| {
+                let s = s.trim();
                 b_len = s.len();
-                s.parse().ok()
+                Some(s.to_owned())
             });
         Some((a, b, max(a_len, b_len)))
     }
 
     fn option_u32_pair_by_id(&mut self, key: &str) -> (Option<u32>, Option<u32>, usize) {
-        let (x, y, len) = match self.text_pair_by_id(key) {
+        let (x, y, len) = match self.number_pair_by_id(key) {
             None => (None, None, 0),
             Some((a, None, len)) => (Some(a), None, len),
             Some((a, Some(b), len)) => (Some(a), Some(b), len),
