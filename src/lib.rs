@@ -669,8 +669,8 @@ impl File {
         unsafe {
             ll::taglib_tag_set_track(t.raw, value);
         }
-        let (_, y, _) = self.option_u32_pair_by_id(KEY_TRACK_NUMBER);
-        self.set_property_split_by_slash(KEY_TRACK_NUMBER, Some(value), y, padding);
+        let (_, track_total, _) = self.option_u32_pair_by_id(KEY_TRACK_NUMBER);
+        self.set_property_split_by_slash(KEY_TRACK_NUMBER, Some(value), track_total, padding);
     }
 
     pub fn remove_track_number(&mut self) {
@@ -685,6 +685,16 @@ impl File {
     }
 
     pub fn track_total(&self) -> Option<u32> {
+        if let Some(track_total) = self.get_first_property(KEY_TRACK_TOTAL) {
+            track_total.parse::<u32>()
+                .map_or_else(|_| self.track_total_from_prop_track_number(),
+                             |t| Some(t))
+        } else {
+            self.track_total_from_prop_track_number()
+        }
+    }
+
+    fn track_total_from_prop_track_number(&self) -> Option<u32> {
         match self.number_pair_by_id(KEY_TRACK_NUMBER) {
             None => None,
             Some((_, None, _)) => None,
@@ -693,6 +703,15 @@ impl File {
     }
 
     pub fn track_total_string(&self) -> Option<String> {
+        let res = self.get_first_property(KEY_TRACK_TOTAL);
+        if res.is_some() {
+            res
+        } else {
+            self.track_total_string_from_prop_track_number()
+        }
+    }
+
+    fn track_total_string_from_prop_track_number(&self) -> Option<String> {
         match self.text_pair_by_id(KEY_TRACK_NUMBER) {
             None => None,
             Some((_, None, _)) => None,
@@ -703,8 +722,8 @@ impl File {
     pub fn set_track_total(&mut self, value: u32, padding: usize) {
         self.set_property(KEY_TRACK_TOTAL, &decimal_to_padding_string(value, padding));
 
-        let (x, _, _) = self.option_u32_pair_by_id(KEY_TRACK_NUMBER);
-        self.set_property_split_by_slash(KEY_TRACK_NUMBER, x, Some(value), padding);
+        let (track_number, _, _) = self.option_u32_pair_by_id(KEY_TRACK_NUMBER);
+        self.set_property_split_by_slash(KEY_TRACK_NUMBER, track_number, Some(value), padding);
     }
 
     pub fn remove_track_total(&mut self) {
@@ -778,8 +797,9 @@ impl File {
                                    last: Option<u32>,
                                    padding: usize) {
         let new_value = Self::pair_to_string(first, last, padding);
+        self.remove_property(key);
         match new_value {
-            None => self.remove_property(key),
+            None => (),
             Some(ref x) => self.set_property(key, &x),
         }
     }
