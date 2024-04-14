@@ -672,7 +672,8 @@ impl File {
 
         if let Some(track_total_string) = self.get_first_property(KEY_TRACK_TOTAL) {
             if let Some(track_total) = track_total_string.parse::<u32>().ok() {
-                self.set_property(KEY_TRACK_TOTAL, &decimal_to_padding_string(value, padding));
+                self.set_property(KEY_TRACK_TOTAL,
+                                  &decimal_to_padding_string(track_total, padding));
                 self.set_property_split_by_slash(KEY_TRACK_NUMBER, Some(value),
                                                  Some(track_total),
                                                  padding)
