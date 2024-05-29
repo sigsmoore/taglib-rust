@@ -193,6 +193,10 @@ impl<'a> Tag<'a> {
         self.file.copyright()
     }
 
+    pub fn lyrics(&self) -> Option<String> {
+        self.file.lyrics()
+    }
+
     pub fn track_number(&self) -> Option<u32> {
         self.file.track_number()
     }
@@ -480,6 +484,7 @@ impl Drop for File {
 const KEY_ALBUM_ARTIST: &'static str = "ALBUMARTIST";
 const KEY_COMPOSER: &'static str = "COMPOSER";
 const KEY_COPYRIGHT: &'static str = "COPYRIGHT";
+const KEY_LYRICS: &'static str = "LYRICS";
 const KEY_DATE: &'static str = "DATE";
 
 // key for property, value like 01/02, first is disc_number, last is disc_total
@@ -617,6 +622,18 @@ impl File {
         self.remove_property(KEY_COPYRIGHT);
     }
 
+    pub fn lyrics(&self) -> Option<String> {
+        self.get_first_property(KEY_LYRICS)
+    }
+
+    pub fn set_lyrics(&mut self, value: &str) {
+        self.set_property(KEY_LYRICS, value);
+    }
+
+    pub fn remove_lyrics(&mut self) {
+        self.remove_property(KEY_LYRICS);
+    }
+
     pub fn date(&self) -> Option<String> {
         self.get_first_property(KEY_DATE)
     }
@@ -678,11 +695,8 @@ impl File {
             ll::taglib_tag_set_track(t.raw, 0);
         }
 
-        let (track_number, track_total) =
-            self.text_pair_by_key(KEY_TRACK_NUMBER);
-        if track_number.is_some() {
-            self.set_property_split_text(KEY_TRACK_NUMBER, &None, &track_total);
-        }
+        let track_total = self.track_total_string();
+        self.set_property_split_text(KEY_TRACK_NUMBER, &None, &track_total);
     }
 
     pub fn track_total(&self) -> Option<u32> {
@@ -712,15 +726,10 @@ impl File {
     }
 
     pub fn remove_track_total(&mut self) {
-        if self.get_first_property(KEY_TRACK_TOTAL).is_some() {
-            self.remove_property(KEY_TRACK_TOTAL);
-        }
+        self.remove_property(KEY_TRACK_TOTAL);
 
-        let (track_number, track_total) =
-            self.text_pair_by_key(KEY_TRACK_NUMBER);
-        if track_total.is_some() {
-            self.set_property_split_text(KEY_TRACK_NUMBER, &track_number, &None);
-        }
+        let track_number = self.track_number_string();
+        self.set_property_split_text(KEY_TRACK_NUMBER, &track_number, &None);
     }
 
     fn track_number_from_prop(&mut self) -> Option<u32> {
@@ -759,11 +768,8 @@ impl File {
     }
 
     pub fn remove_disc_number(&mut self) {
-        let (disc_number, disc_total) =
-            self.text_pair_by_key(KEY_DISC_NUMBER);
-        if disc_number.is_some() {
-            self.set_property_split_text(KEY_DISC_NUMBER, &None, &disc_total);
-        }
+        let (_, disc_total) = self.text_pair_by_key(KEY_DISC_NUMBER);
+        self.set_property_split_text(KEY_DISC_NUMBER, &None, &disc_total);
     }
 
     pub fn disc_total(&self) -> Option<u32> {
@@ -782,11 +788,8 @@ impl File {
     }
 
     pub fn remove_disc_total(&mut self) {
-        let (disc_number, disc_total) =
-            self.text_pair_by_key(KEY_DISC_NUMBER);
-        if disc_total.is_some() {
-            self.set_property_split_text(KEY_DISC_NUMBER, &disc_number, &None);
-        }
+        let (disc_number, _) = self.text_pair_by_key(KEY_DISC_NUMBER);
+        self.set_property_split_text(KEY_DISC_NUMBER, &disc_number, &None);
     }
 
     fn set_property_split_text(&mut self,
