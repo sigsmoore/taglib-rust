@@ -21,27 +21,25 @@
 #![crate_name = "taglib"]
 #![crate_type = "lib"]
 
-#[cfg(target_os = "windows")]
-extern crate codepage;
 extern crate lazy_static;
 extern crate libc;
 extern crate taglib_sys as sys;
 #[cfg(target_os = "windows")]
 extern crate windows_sys as windows;
 
-use std::{mem, ptr, slice};
+#[cfg(target_os = "windows")]
+extern crate codepage;
+
+use std::{mem, ptr};
 use std::collections::HashSet;
 use std::convert::TryInto;
-use std::ffi::{CStr, CString, OsStr};
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::ptr::null_mut;
+use std::ffi::{CStr, CString};
+use std::path::Path;
 use std::str::Utf8Error;
 
 use lazy_static::lazy_static;
 use libc::c_char;
 use sys as ll;
-use sys::{TagLib_Complex_Property_Attribute, TagLib_Complex_Property_Picture_Data, TagLib_Variant, TAGLIB_VARIANT_TYPE_TAGLIB_VARIANT_BYTE_VECTOR, TAGLIB_VARIANT_TYPE_TAGLIB_VARIANT_STRING, TagLib_Variant_Value_Union};
 
 fn c_str_to_str(c_str: *const c_char) -> Option<String> {
     if c_str.is_null() {
@@ -495,8 +493,6 @@ const KEY_TRACK_NUMBER: &'static str = "TRACKNUMBER";
 // key for property, value like 10, only contains track_total
 const KEY_TRACK_TOTAL: &'static str = "TRACKTOTAL";
 
-const KEY_PICTURE: &'static str = "PICTURE";
-
 #[cfg(target_os = "windows")]
 fn acp_encode(s: &str) -> Option<Vec<u8>> {
     let acp = unsafe { windows::Win32::Globalization::GetACP() };
@@ -887,196 +883,10 @@ impl File {
         }
     }
 
-    pub fn extract_pic_file(&self, path: &Path, stem_suffix: &OsStr) -> Option<PathBuf> {
-        let cs = CString::new(KEY_PICTURE).unwrap();
-        let mut picture: TagLib_Complex_Property_Picture_Data = TagLib_Complex_Property_Picture_Data {
-            mime_type: null_mut(),
-            description: null_mut(),
-            picture_type: null_mut(),
-            data: null_mut(),
-            size: 0,
-        };
-
-        let props: *mut *mut *mut TagLib_Complex_Property_Attribute;
-        unsafe {
-            props = ll::taglib_complex_property_get(self.raw, cs.as_ptr());
-            ll::taglib_picture_from_complex_property(props, &mut picture);
-        }
-
-        let description = c_str_to_str(picture.description);
-        let picture_type = c_str_to_str(picture.picture_type);
-        let mime_type = c_str_to_str(picture.mime_type);
-
-        let size = picture.size as usize;
-        println!("extract pic - mime_type: {:?}, size: {}, description: {:?}, picture_type: {:?}",
-                 &mime_type, size, &description, &picture_type);
-        let res = if mime_type.is_some() && size > 0 {
-            let mut pic_path = PathBuf::from(path);
-            if !stem_suffix.is_empty() {
-                pic_path.set_extension("");
-                pic_path.as_mut_os_string().push(stem_suffix);
-            }
-            pic_path.set_extension(get_ext(mime_type).unwrap());
-
-            match std::fs::File::create(&pic_path) {
-                Ok(mut pic_file) => {
-                    let u8slice = unsafe {
-                        slice::from_raw_parts(picture.data as *const u8, size)
-                    };
-
-                    if let Some(_) = pic_file.write_all(u8slice).ok() {
-                        Some(pic_path)
-                    } else {
-                        None
-                    }
-                }
-                Err(_) => None,
-            }
-        } else {
-            None
-        };
-
-        unsafe {
-            ll::taglib_complex_property_free(props);
-        }
-        res
-    }
-
-    pub fn set_pic(&mut self,
-                   data: &mut Vec<u8>,
-                   size: usize,
-                   mime_type: &str) {
-        self.set_pic_detail(data,
-                            size,
-                            mime_type,
-                            "Written by TagLib",
-                            "Front Cover")
-    }
-
-    pub fn set_pic_detail(&mut self,
-                          data: &mut Vec<u8>,
-                          size: usize,
-                          mime_type: &str,
-                          description: &str,
-                          picture_type: &str) {
-        let key_data_cstr = CString::new("data").unwrap();
-        let key_mime_type_cstr = CString::new("mimeType").unwrap();
-        let key_description_cstr = CString::new("description").unwrap();
-        let key_picture_type_cstr = CString::new("pictureType").unwrap();
-        println!("key_data_cstr: {:?}, key_mime_type_cstr: {:?}, \
-                 key_description_cstr: {:?}, key_picture_type_cstr: {:?}",
-                 &key_data_cstr, &key_mime_type_cstr,
-                 &key_description_cstr, &key_picture_type_cstr);
-
-        let mime_type_cstr = CString::new(mime_type).unwrap();
-        let description_cstr = CString::new(description).unwrap();
-        let picture_type_cstr = CString::new(picture_type).unwrap();
-        println!("mime_type_cstr: {:?}, description_cstr: {:?}, picture_type_cstr: {:?}",
-                 &mime_type, description_cstr, picture_type_cstr);
-
-        data.push(b'\0');
-
-        let attrs: [TagLib_Complex_Property_Attribute; 4] = [
-            TagLib_Complex_Property_Attribute {
-                key: key_data_cstr.into_bytes().into_iter()
-                    .map(|e| e as c_char)
-                    .collect::<Vec<_>>()
-                    .as_mut_ptr(),
-                value: TagLib_Variant {
-                    r#type: TAGLIB_VARIANT_TYPE_TAGLIB_VARIANT_BYTE_VECTOR,
-                    size: size as u32,
-                    value: TagLib_Variant_Value_Union { byte_vector_value: data.as_mut_ptr() as *mut c_char },
-                },
-            },
-            TagLib_Complex_Property_Attribute {
-                key: key_mime_type_cstr.into_bytes().into_iter()
-                    .map(|e| e as c_char)
-                    .collect::<Vec<_>>()
-                    .as_mut_ptr(),
-                value: TagLib_Variant {
-                    r#type: TAGLIB_VARIANT_TYPE_TAGLIB_VARIANT_STRING,
-                    size: 0,
-                    value: TagLib_Variant_Value_Union {
-                        string_value: mime_type_cstr.into_bytes().into_iter()
-                            .map(|e| e as c_char)
-                            .collect::<Vec<_>>()
-                            .as_mut_ptr()
-                    },
-                },
-            },
-            TagLib_Complex_Property_Attribute {
-                key: key_description_cstr.into_bytes().into_iter()
-                    .map(|e| e as c_char)
-                    .collect::<Vec<_>>()
-                    .as_mut_ptr(),
-                value: TagLib_Variant {
-                    r#type: TAGLIB_VARIANT_TYPE_TAGLIB_VARIANT_STRING,
-                    size: 0,
-                    value: TagLib_Variant_Value_Union {
-                        string_value: description_cstr.into_bytes().into_iter()
-                            .map(|e| e as c_char)
-                            .collect::<Vec<_>>()
-                            .as_mut_ptr()
-                    },
-                },
-            },
-            TagLib_Complex_Property_Attribute {
-                key: key_picture_type_cstr.into_bytes().into_iter()
-                    .map(|e| e as c_char)
-                    .collect::<Vec<_>>()
-                    .as_mut_ptr(),
-                value: TagLib_Variant {
-                    r#type: TAGLIB_VARIANT_TYPE_TAGLIB_VARIANT_STRING,
-                    size: 0,
-                    value: TagLib_Variant_Value_Union {
-                        string_value: picture_type_cstr.into_bytes().into_iter()
-                            .map(|e| e as c_char)
-                            .collect::<Vec<_>>()
-                            .as_mut_ptr()
-                    },
-                },
-            },
-        ];
-
-        let argv: [*const TagLib_Complex_Property_Attribute; 5] =
-            [
-                &attrs[0],
-                &attrs[1],
-                &attrs[2],
-                &attrs[3],
-                ptr::null(),
-            ];
-
-        self.remove_pic();
-        let cs = CString::new(KEY_PICTURE).unwrap();
-        unsafe {
-            ll::taglib_complex_property_set(self.raw, cs.as_ptr(), &mut (argv.as_ptr() as *const _));
-            ll::taglib_file_save(self.raw);
-        }
-    }
-
-    pub fn remove_pic(&mut self) {
-        let cs = CString::new(KEY_PICTURE).unwrap();
-        unsafe {
-            ll::taglib_complex_property_set(self.raw, cs.as_ptr(), null_mut());
-        }
-    }
-
     /// Updates the meta-data of the file.
     pub fn save(&self) -> bool {
         unsafe { ll::taglib_file_save(self.raw) != 0 }
     }
-}
-
-fn get_ext(mime_type: Option<String>) -> Option<&'static str> {
-    mime_type.map_or_else(|| None,
-                          |ref mime_str| {
-                              if mime_str.eq("image/png") {
-                                  Some("png")
-                              } else {
-                                  Some("jpg")
-                              }
-                          })
 }
 
 fn text_pair_to_string(first: &Option<String>, last: &Option<String>) -> Option<String> {
@@ -1258,95 +1068,6 @@ mod test {
         let file = File::new(temp_fn).unwrap();
         let tag = file.tag().unwrap();
         assert_eq!(tag.artist().unwrap(), "Not Artist");
-
-        fs::remove_file(temp_fn).unwrap();
-    }
-
-    #[test]
-    fn test_extract_pic_ok() {
-        let temp_fn = "fixtures/pic_temp.flac";
-        fs::copy(TEST_FLAC, temp_fn).unwrap();
-        let file = File::new(temp_fn).unwrap();
-
-        let path = Path::new(temp_fn);
-        match file.extract_pic_file(path, "_cover".as_ref()) {
-            Some(ref path) => {
-                assert!(true);
-
-                assert!(path.is_file());
-                assert!(path.metadata().unwrap().len() > 0);
-
-                fs::remove_file(path).unwrap();
-            }
-            None => {
-                // fail!
-                assert!(false);
-            }
-        }
-
-        fs::remove_file(temp_fn).unwrap();
-    }
-
-    #[test]
-    fn test_extract_pic_empty() {
-        let temp_fn = "fixtures/pic_temp.mp3";
-        fs::copy(TEST_MP3, temp_fn).unwrap();
-        let file = File::new(temp_fn).unwrap();
-
-        let path = Path::new(temp_fn);
-        let res = file.extract_pic_file(path, "_cover".as_ref());
-        assert!(res.is_none());
-
-        fs::remove_file(temp_fn).unwrap();
-    }
-
-    #[test]
-    fn test_set_pic() {
-        let temp_fn = "fixtures/set_pic_temp.flac";
-        fs::copy(TEST_FLAC, temp_fn).unwrap();
-        let mut file = File::new(temp_fn).unwrap();
-
-        let mut data: Vec<u8> = fs::read("fixtures/pic.jpg").unwrap();
-        let len = data.len();
-        println!("size: {}", len);
-        //println!("data: {:?}", &data);
-
-        file.set_pic(&mut data, len, "image/jpeg");
-        assert!(true);
-
-        let path = Path::new(temp_fn);
-        match file.extract_pic_file(path, "_cover".as_ref()) {
-            Some(ref path) => {
-                assert!(true);
-
-                assert!(path.is_file());
-                assert!(path.metadata().unwrap().len() > 0);
-
-                fs::remove_file(path).unwrap();
-            }
-            None => {
-                // fail! should NOT in the branch!
-                assert!(false);
-            }
-        }
-
-        fs::remove_file(temp_fn).unwrap();
-    }
-
-    #[test]
-    fn test_remove_pic() {
-        let temp_fn = "fixtures/remove_pic_temp.flac";
-        fs::copy(TEST_FLAC, temp_fn).unwrap();
-        let mut file = File::new(temp_fn).unwrap();
-
-        file.remove_pic();
-        file.save();
-        assert!(true);
-
-        let file = File::new(temp_fn).unwrap();
-        let path = Path::new(temp_fn);
-        let res = file.extract_pic_file(path, "_cover".as_ref());
-        assert!(res.is_none());
 
         fs::remove_file(temp_fn).unwrap();
     }
