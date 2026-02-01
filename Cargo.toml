@@ -8,6 +8,7 @@ repository = "https://github.com/ebassi/taglib-rust/"
 keywords = ["taglib", "media", "tags", "metadata"]
 homepage = "http://ebassi.github.io/taglib-rust/"
 documentation = "http://ebassi.github.io/taglib-rust/docs/taglib/"
+edition = "2021"
 
 [lib]
 name = "taglib"
