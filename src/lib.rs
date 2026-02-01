@@ -557,7 +557,7 @@ impl File {
     }
 
     /// Returns the `taglib::Tag` instance for the given file.
-    pub fn tag(&self) -> Result<Tag, FileError> {
+    pub fn tag(&self) -> Result<Tag<'_>, FileError> {
         let res = unsafe { ll::taglib_file_tag(self.raw) };
 
         if res.is_null() {
@@ -576,7 +576,7 @@ impl File {
     }
 
     /// Returns the `taglib::AudioProperties` instance for the given file.
-    pub fn audioproperties(&self) -> Result<AudioProperties, FileError> {
+    pub fn audioproperties(&self) -> Result<AudioProperties<'_>, FileError> {
         let res = unsafe { ll::taglib_file_audioproperties(self.raw) };
 
         if res.is_null() {
