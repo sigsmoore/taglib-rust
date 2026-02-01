@@ -1,24 +1,30 @@
 [package]
 name = "taglib"
 description = "Rust bindings for TagLib"
-version = "1.0.0"
+version = "2.0.2"
 authors = ["Emmanuele Bassi <ebassi@gnome.org>", "Chris Down <chris@chrisdown.name>"]
 license = "MIT"
 repository = "https://github.com/ebassi/taglib-rust/"
 keywords = ["taglib", "media", "tags", "metadata"]
 homepage = "http://ebassi.github.io/taglib-rust/"
 documentation = "http://ebassi.github.io/taglib-rust/docs/taglib/"
+edition = "2021"
 
 [lib]
 name = "taglib"
 path = "src/lib.rs"
 
 [dependencies]
+lazy_static = "1.4.0"
 libc = "0.2"
 
 [dependencies.taglib-sys]
 path = "taglib-sys"
-version = "1.0.0"
+version = "2.0.0"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+codepage = "0.1.1"
+windows-sys = { version = "0.52", features = ["Win32_Globalization"] }
 
 [features]
 default = []

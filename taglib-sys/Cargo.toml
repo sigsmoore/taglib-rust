@@ -1,7 +1,7 @@
 [package]
 name = "taglib-sys"
 description = "Raw TagLib bindings for Rust, used internally by TagLib-Rust"
-version = "1.0.0"
+version = "2.0.0"
 authors = ["Emmanuele Bassi <ebassi@gnome.org>", "Chris Down <chris@chrisdown.name>"]
 repository = "https://github.com/ebassi/taglib-rust"
 license = "MIT"
